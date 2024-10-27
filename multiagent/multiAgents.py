@@ -519,10 +519,115 @@ def betterEvaluationFunction(currentGameState):
     Your extreme ghost-hunting, pellet-nabbing, food-gobbling, unstoppable
     evaluation function (question 5).
 
-    DESCRIPTION: <write something here so we know what you did>
+    DESCRIPTION:
+
+    Calculated and returned the sum of the following values:
+
+    ghost_dist_score
+        This value represents the inverse of the distance between pacman
+        and ghosts in the game.
+    food_dist_score
+        This value is the inverse of the distance between pacman and food
+        one the board
+    num_food_score
+        This value increases greatly as food is removed from the board to
+        make the value of consuming food much higher than being close to
+        food
+    capsule_dist_score
+        This value is the inverse of the distance between pacman and the
+        closest power pellet. Weighted much less than the distance to food
+        but enough to make pacman grab one if he is pretty close to one
+    num_capsule_score
+        This value increases greatly as power pellets are removed from the 
+        board to incentivise pacman to pick them up as they provide extra
+        game-score opportunities for pacman.
+    dead_end_score
+        This value is based off of the number of available moves that pacman
+        has in a particular state. In order to try and avoid deadends, pacman
+        is greatly penalized for states which contain only two possible
+        actions ('stop' and one other option)
+    currentGameState.getScore()
+        This value is added to incentivise pacman to choose states which
+        increase his score.
+    noise
+        A small amount of uniform noise is added to the total score in order
+        to try and avoid pacman getting stuck between two states.
     """
-    "*** YOUR CODE HERE ***"
-    util.raiseNotDefined()
+
+    # Coordinate position of pacman in the successor gamestate
+    newPos = currentGameState.getPacmanPosition()
+
+    # Ascii table representing the locations in the successor state where
+    # there is food on the board.
+    newFood = currentGameState.getFood()
+
+    capsules = currentGameState.getCapsules()
+
+    # A list containing the state information for each ghost on the board.
+    # Contains the coordinate position of the ghosts as well as the
+    # direction that they are facing.
+    newGhostStates = currentGameState.getGhostStates()
+
+    # A list containing the number of moves that each ghost will remain
+    # scared for.
+    newScaredTimes = [ghostState.scaredTimer for ghostState in newGhostStates]
+
+    # Penalize deadends
+    dead_end_score = 0
+    num_moves = len(currentGameState.getLegalActions())
+    if num_moves == 2: dead_end_score = -100
+
+    # Prefer positions which are further away from ghosts
+    ghost_dist_score = 0
+    for i, state in enumerate(newGhostStates):
+        ghost_pos = state.getPosition()
+        dist_to_ghost = manhattanDistance(ghost_pos, newPos)
+        ghost_dist_score += (-3 + newScaredTimes[i])\
+            *(10/(dist_to_ghost+.01)**3)
+
+    # Pacman should prefer positions which contain food and by extension, he
+    # should prefer positions that are close to food. Counting the number of
+    # pellets within a certain distance could be useful.
+    food_dist_score = 0
+    man_food_dists = []
+    num_food = 0
+    for x, row in enumerate(newFood):
+        for y, food in enumerate(row):
+            if food:
+                num_food += 1
+                man_dist_to_food = manhattanDistance((x,y), newPos)
+                man_food_dists.append(man_dist_to_food)
+    if len(man_food_dists) > 0: food_dist_score += \
+        (1 / (min(man_food_dists) + .1)) * 1000
+
+    num_food_score = 40000000 / (num_food**2 +.1)
+
+    capsule_dist_score = 0
+    man_capsule_dists = []
+    num_capsules = 0
+    for x, row in enumerate(capsules):
+        for y, cap in enumerate(row):
+            if cap:
+                num_capsules += 1
+                man_dist_to_capsule = manhattanDistance((x,y), newPos)
+                man_capsule_dists.append(man_dist_to_capsule)
+    if len(man_capsule_dists) > 0: capsule_dist_score += \
+        (1 / (min(man_capsule_dists) + .1))
+
+    num_capsule_score = 40000000 / (num_capsules**2 +.1)
+
+
+    noise = random.uniform(-.1,.1)
+
+    return sum([ghost_dist_score,
+                food_dist_score,
+                num_food_score,
+                capsule_dist_score,
+                num_capsule_score,
+                dead_end_score,
+                currentGameState.getScore(),
+                noise])
+
 
 # Abbreviation
 better = betterEvaluationFunction
