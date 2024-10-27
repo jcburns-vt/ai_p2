@@ -12,11 +12,12 @@
 # Pieter Abbeel (pabbeel@cs.berkeley.edu).
 
 
-from util import manhattanDistance, matrixAsList
+from util import manhattanDistance
 from game import Directions
-import random, util
+import random, util, math
 
 from game import Agent
+
 
 class ReflexAgent(Agent):
     """
@@ -27,7 +28,9 @@ class ReflexAgent(Agent):
     it in any way you see fit, so long as you don't touch our method
     headers.
     """
-
+    def __init__(self):
+        super().__init__()
+        self.last_positions = []
 
     def getAction(self, gameState):
         """
@@ -40,7 +43,7 @@ class ReflexAgent(Agent):
         """
         # Collect legal moves and successor states
         legalMoves = gameState.getLegalActions()
-
+        
         # Choose one of the best actions
         scores = [self.evaluationFunction(gameState, action) for action in legalMoves]
         bestScore = max(scores)
@@ -50,7 +53,11 @@ class ReflexAgent(Agent):
         "Add more of your code here if you want to"
 
         chosen_move = legalMoves[chosenIndex]
-        print(chosen_move)
+
+        self.last_positions.append(gameState.getPacmanPosition())
+        if len(self.last_positions) > 4: 
+            self.last_positions.pop()
+
         return chosen_move 
 
     def evaluationFunction(self, currentGameState, action):
@@ -68,7 +75,10 @@ class ReflexAgent(Agent):
         Print out these variables to see what you're getting, then combine them
         to create a masterful evaluation function.
         """
-        # Useful information you can extract from a GameState (pacman.py)
+
+        return self.evaluation_function_rec(currentGameState, action, 2)
+
+    def evaluation_function_rec(self, currentGameState, action, look_ahead_depth):
 
         # An ascii layout of the gameboard where pacman is represented as <>^v
         # depending on the direction that he is facing.
@@ -90,56 +100,98 @@ class ReflexAgent(Agent):
         # scared for.
         newScaredTimes = [ghostState.scaredTimer for ghostState in newGhostStates]
 
-        # 
-        # TODO:
-        # Would probably be good to prefer positions where pacman is not facing
-        # opposite a ghosts direction of motion. This should be weighted by how
-        # close pacman is to a ghost
+        # Penalize agent for returning to the previous postition
+        prev_pos_score = 0
+        if newPos in self.last_positions:
+            prev_pos_score = -100*((self.last_positions.index(newPos)+1)**3)
+        else:
+            prev_pos_score = 100
 
-        # TODO:
+        # Penalize deadends
+        dead_end_score = 0
+        num_moves = len(successorGameState.getLegalActions())
+        if num_moves == 2: dead_end_score = -100
+
         # Prefer positions which are further away from ghosts
         ghost_dist_score = 0
         for i, state in enumerate(newGhostStates):
+            ghost_pos = state.getPosition()
+            dist_to_ghost = manhattanDistance(ghost_pos, newPos)
+            ghost_dist_score += (-3 + newScaredTimes[i])\
+                *(10/(dist_to_ghost+.01)**3)
 
-            pos = state.getPosition()
-            dist = manhattanDistance(pos, newPos)
-            ghost_dist_score += (-3 + newScaredTimes[i])*(12/(dist+.01))**2
-
-        # TODO:
-        # Consider the amount of walls between pacman and ghosts, pacman should
-        # pay significantly more attention to ghosts who do not have any walls
-        # between them and pacman
-
-        # TODO:
         # Pacman should prefer positions which contain food and by extension, he
         # should prefer positions that are close to food. Counting the number of
         # pellets within a certain distance could be useful.
         food_dist_score = 0
-        for y, row in enumerate(newFood):
-            for x, food in enumerate(row):
+        man_food_dists = []
+        num_food = 0
+        for x, row in enumerate(newFood):
+            for y, food in enumerate(row):
                 if food:
-                    dist = manhattanDistance((x,y), newPos)
-                    food_dist_score += 1/(dist+.1)
+                    num_food += 1
+                    man_dist_to_food = manhattanDistance((x,y), newPos)
+                    man_food_dists.append(man_dist_to_food)
+        if len(man_food_dists) > 0: food_dist_score += \
+            (1 / (min(man_food_dists) + .1)) * 200
 
-        # TODO:
         # Highly incentivise positions that increase score
-        diff_score = 0
-        score_diff = successorGameState.getScore() - currentGameState.getScore()
-        if score_diff > 0:
-            diff_score = 100
+        diff_score = successorGameState.getScore()\
+            - currentGameState.getScore()
+        if diff_score > 0: 
+            diff_score = 200000
+        else:
+            diff_score = 0
 
-        # TODO:
-        # Incentivise, to the utmost, avoiding positions which ghosts are in
-
-        # TODO:
         # Prefer non-stopped actions
         direction_score = 0
-        if action == 'Stop': direction_score += (-100)
+        if action == 'Stop': direction_score += (-200)
+
+        # Score successor states a depth of n
+        surrounding_states_score = 0
+        if look_ahead_depth > 0:
+
+            legalMoves = successorGameState.getLegalActions()
+            surrounding_states_score = sum(
+                [self.evaluation_function_rec(successorGameState,
+                                              move,
+                                              look_ahead_depth-1)
+                 for move in legalMoves]
+            )
+            if len(legalMoves) > 0:
+                surrounding_states_score /= len(legalMoves)
+
+        noise = random.uniform(-.1,.1)
 
         return sum([ghost_dist_score,
+                    diff_score,
+                    prev_pos_score,
                     food_dist_score,
                     direction_score,
-                    successorGameState.getScore()])
+                    dead_end_score,
+                    surrounding_states_score,
+                    noise])
+
+
+def opposite(action):
+    match action:
+        case 'North':
+            return 'South'
+        case 'East':
+            return 'West'
+        case 'West':
+            return 'East'
+        case 'South':
+            return 'North'
+        case 'Stop':
+            return 'Stop'
+        case _:
+            return 'Stop'
+
+
+def euclidean_distance(x, y):
+    return math.sqrt(sum((a - b) ** 2 for a, b in zip(x, y)))
+
 
 def scoreEvaluationFunction(currentGameState):
     """
@@ -150,6 +202,7 @@ def scoreEvaluationFunction(currentGameState):
     (not reflex agents).
     """
     return currentGameState.getScore()
+
 
 class MultiAgentSearchAgent(Agent):
     """
@@ -170,6 +223,7 @@ class MultiAgentSearchAgent(Agent):
         self.index = 0 # Pacman is always agent index 0
         self.evaluationFunction = util.lookup(evalFn, globals())
         self.depth = int(depth)
+
 
 class MinimaxAgent(MultiAgentSearchAgent):
     """
@@ -199,8 +253,81 @@ class MinimaxAgent(MultiAgentSearchAgent):
         gameState.isLose():
         Returns whether or not the game state is a losing state
         """
-        "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+
+        action, _ = self.get_action_rec(gameState, self.depth)
+        return action
+
+    def get_action_rec(self, game_state, depth, agent_index=0, action=None):
+
+        # if state is a leaf, evaluate it a bubble it up
+        if (depth == 0) or game_state.isLose() or game_state.isWin():
+            return (action, self.evaluationFunction(game_state))
+
+        # evaluate pacman agent successors
+        if (agent_index == 0):
+
+            # Get legal pacman actions
+            pacman_actions = game_state.getLegalActions(agent_index)
+            max_value = -math.inf
+            chosen_action = None
+
+            # Evaluate the successors for each action
+            for action in pacman_actions:
+
+                # Generate successor state
+                pacman_successor = game_state.generateSuccessor(
+                    agent_index, action
+                )
+
+                # evaluates action and returns its value
+                _, value = self.get_action_rec(
+                    pacman_successor, depth, agent_index+1, action
+                )
+
+                # keep track of which action yields the max value
+                if value > max_value:
+                    max_value = value
+                    chosen_action = action
+
+            return chosen_action, max_value
+
+        # Evaluate successors for agents 1 thru gameState.getNumAgents() - 1
+        else:
+
+            # Get legal ghost actions
+            ghost_actions = game_state.getLegalActions(agent_index)
+            min_value = math.inf
+            chosen_action = None
+
+            # Evaluate successors for each ghost action
+            for action in ghost_actions:
+
+                # Generate successor
+                ghost_successor = game_state.generateSuccessor(
+                    agent_index, action
+                )
+
+                # Determine the next agent's successors to evaluate
+                next_agent_index = agent_index + 1
+                next_depth = depth
+
+                # If there are no more ghosts, yield next turn to pacman
+                if agent_index == game_state.getNumAgents() - 1:
+                    next_depth = depth - 1
+                    next_agent_index = 0
+
+                # Determine the value of each of the successor states
+                _, value = self.get_action_rec(
+                    ghost_successor, next_depth, next_agent_index, action
+                )
+
+                # Keep track of which action yields the min value
+                if value < min_value:
+                    min_value = value
+                    chosen_action = action
+
+            return chosen_action, min_value
+
 
 class AlphaBetaAgent(MultiAgentSearchAgent):
     """
