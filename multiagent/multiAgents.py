@@ -338,8 +338,91 @@ class AlphaBetaAgent(MultiAgentSearchAgent):
         """
         Returns the minimax action using self.depth and self.evaluationFunction
         """
-        "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+
+        action, _ = self.get_action_rec(gameState, self.depth)
+        return action
+
+    def get_action_rec(self, game_state, depth, agent_index=0, action=None,
+        alpha=-math.inf, beta=math.inf):
+
+        # if state is a leaf, evaluate it a bubble it up
+        if (depth == 0) or game_state.isLose() or game_state.isWin():
+            return (action, self.evaluationFunction(game_state))
+
+        # evaluate pacman agent successors
+        if (agent_index == 0):
+
+            # Get legal pacman actions
+            pacman_actions = game_state.getLegalActions(agent_index)
+            max_value = -math.inf
+            chosen_action = None
+
+            # Evaluate the successors for each action
+            for action in pacman_actions:
+
+                # Generate successor state
+                pacman_successor = game_state.generateSuccessor(
+                    agent_index, action
+                )
+
+                # evaluates action and returns its value
+                _, value = self.get_action_rec(
+                    pacman_successor, depth, agent_index+1, action, alpha, beta
+                )
+
+                # keep track of which action yields the max value
+                if value > max_value:
+                    max_value = value
+                    chosen_action = action
+
+                if max_value > beta: return chosen_action, max_value
+
+                alpha = max(alpha, value)
+
+            return chosen_action, max_value
+
+        # Evaluate successors for agents 1 thru gameState.getNumAgents() - 1
+        else:
+
+            # Get legal ghost actions
+            ghost_actions = game_state.getLegalActions(agent_index)
+            min_value = math.inf
+            chosen_action = None
+
+            # Evaluate successors for each ghost action
+            for action in ghost_actions:
+
+                # Generate successor
+                ghost_successor = game_state.generateSuccessor(
+                    agent_index, action
+                )
+
+                # Determine the next agent's successors to evaluate
+                next_agent_index = agent_index + 1
+                next_depth = depth
+
+                # If there are no more ghosts, yield next turn to pacman
+                if agent_index == game_state.getNumAgents() - 1:
+                    next_depth = depth - 1
+                    next_agent_index = 0
+
+                # Determine the value of each of the successor states
+                _, value = self.get_action_rec(
+                    ghost_successor, next_depth, next_agent_index, action,
+                    alpha, beta
+                )
+
+                # Keep track of which action yields the min value
+                if value < min_value:
+                    min_value = value
+                    chosen_action = action
+
+                if min_value < alpha: return chosen_action, min_value
+
+                beta = min(beta, min_value)
+
+            return chosen_action, min_value
+
 
 class ExpectimaxAgent(MultiAgentSearchAgent):
     """
